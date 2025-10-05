@@ -1,12 +1,19 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"github.com/caarlos0/env/v11"
 	"github.com/ownerofglory/webrtc-sfu-demo/config"
+	"github.com/ownerofglory/webrtc-sfu-demo/internal/core/services"
+	"github.com/ownerofglory/webrtc-sfu-demo/internal/handler"
+	"github.com/ownerofglory/webrtc-sfu-demo/internal/middleware"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 func main() {
@@ -24,9 +31,46 @@ func main() {
 	}
 	slog.SetLogLoggerLevel(logLevel)
 
+	h := http.NewServeMux()
+	h.HandleFunc(handler.GetVersionPath, handler.HandleGetVersion)
+
+	rtcConfigHandler := handler.NewRTCConfigHandler(&cfg)
+	h.HandleFunc(handler.GetRTCConfigPath, rtcConfigHandler.HandleGetRTCConfig)
+
+	nicknameGenerator := services.NewNicknameGenerator()
+	wsHandler := handler.NewWSHandler(&cfg, nicknameGenerator)
+	h.HandleFunc(handler.WSPath, wsHandler.HandleWS)
+
+	fs := http.FileServer(http.Dir("web"))
+	h.Handle("/webrtc-sfu/ws/app/", http.StripPrefix("/webrtc-sfu/ws/app/", fs))
+
+	httpServer := http.Server{
+		Addr:    cfg.ServerAddr,
+		Handler: middleware.CORS(cfg.AllowedOrigins)(h),
+	}
+
+	go func() {
+		slog.Info("Starting HTTP Server", "address", cfg.ServerAddr)
+
+		err := httpServer.ListenAndServe()
+
+		if !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("Server shutdown unexpected", "err", err)
+		}
+
+		slog.Info("HTTP Server finished")
+	}()
+
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
+
+	shutdownCtx, shutdownRelease := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownRelease()
+
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		slog.Error("HTTP shutdown error:", "err", err)
+	}
 
 	slog.Info("App finished")
 }
