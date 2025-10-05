@@ -38,7 +38,8 @@ func main() {
 	h.HandleFunc(handler.GetRTCConfigPath, rtcConfigHandler.HandleGetRTCConfig)
 
 	nicknameGenerator := services.NewNicknameGenerator()
-	wsHandler := handler.NewWSHandler(&cfg, nicknameGenerator)
+	roomNameGenerator := services.NewRoomGenerator()
+	wsHandler := handler.NewWSHandler(&cfg, nicknameGenerator, roomNameGenerator)
 	h.HandleFunc(handler.WSPath, wsHandler.HandleWS)
 
 	fs := http.FileServer(http.Dir("web"))
