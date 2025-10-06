@@ -176,11 +176,13 @@ func (h *wsHandler) HandleWS(rw http.ResponseWriter, req *http.Request) {
 			},
 		}
 
-		session = sfu.NewSession(roomID, nil, sfu.NewWebRTCTransportConfig(sfuConfig))
+		wCfg := sfu.NewWebRTCTransportConfig(sfuConfig)
+		session = sfu.NewSession(roomID, nil, wCfg)
 		room = &webRTCRoom{
 			id:      roomID,
 			members: make(map[WebRTCClientID]*webRTCClientConn),
 			session: session,
+			cfg:     &wCfg,
 		}
 
 		roomsMx.Lock()
@@ -246,7 +248,7 @@ func (h *wsHandler) HandleWS(rw http.ResponseWriter, req *http.Request) {
 
 	if err = peerLocal.Join(roomID, string(clientID)); err != nil {
 		slog.Error("Error joining room", "room", roomID, "client", clientID, "err", err.Error())
-		return
+		cancel()
 	}
 
 	go func(ctx context.Context) {
