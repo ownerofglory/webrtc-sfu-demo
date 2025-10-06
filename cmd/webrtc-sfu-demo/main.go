@@ -5,9 +5,11 @@ import (
 	"errors"
 	"github.com/caarlos0/env/v11"
 	"github.com/ownerofglory/webrtc-sfu-demo/config"
+	"github.com/ownerofglory/webrtc-sfu-demo/internal/cloudflare"
 	"github.com/ownerofglory/webrtc-sfu-demo/internal/core/services"
 	"github.com/ownerofglory/webrtc-sfu-demo/internal/handler"
 	"github.com/ownerofglory/webrtc-sfu-demo/internal/middleware"
+	"github.com/pion/ion-sfu/pkg/sfu"
 	"log/slog"
 	"net/http"
 	"os"
@@ -39,7 +41,10 @@ func main() {
 
 	nicknameGenerator := services.NewNicknameGenerator()
 	roomNameGenerator := services.NewRoomGenerator()
-	wsHandler := handler.NewWSHandler(&cfg, nicknameGenerator, roomNameGenerator)
+	sfuHandler := sfu.NewSFU(sfu.Config{})
+	cloudFlareRTCClient := cloudflare.NewClient(cfg.TURNKey, cfg.TURNAPIToken, &http.Client{})
+	rtcConfigFetcher := services.NewRTCConfigFetcher(cloudFlareRTCClient)
+	wsHandler := handler.NewWSHandler(&cfg, sfuHandler, rtcConfigFetcher, nicknameGenerator, roomNameGenerator)
 	h.HandleFunc(handler.WSPath, wsHandler.HandleWS)
 
 	fs := http.FileServer(http.Dir("web"))
